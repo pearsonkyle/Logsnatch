@@ -31,6 +31,7 @@ raw logs ──parse──▶ *_raw.jsonl
 
 ```bash
 pip install -e .                  # core CLI (stdlib only)
+pip install -e '.[huggingface]'   # optional: enable Hugging Face dataset uploads
 ```
 
 Only `validate` pulls in `transformers` — the rest of the pipeline runs on the
@@ -52,6 +53,21 @@ Higher-quality cut, all supported providers:
 
 ```bash
 python -m logminer run --source all --output data/out.jsonl --min-score 0.7
+```
+
+Upload the final dataset to a Hugging Face dataset repo when a hub token is in
+`HF_TOKEN`, `HUGGINGFACE_HUB_TOKEN`, or `HUGGING_FACE_HUB_TOKEN`:
+
+```bash
+export HF_TOKEN=hf_xxx
+python -m logminer run --source claude --output training.jsonl --hf-repo your-name/logminer-data
+```
+
+If you already ran the earlier stages yourself, `filter` can upload the final
+JSONL too:
+
+```bash
+python -m logminer filter --input data/scored.jsonl --output data/training.jsonl --hf-repo your-name/logminer-data
 ```
 
 Parse only, then sanity-check records against a real tokenizer:

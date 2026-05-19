@@ -1,9 +1,13 @@
 import argparse
 import contextlib
+import importlib
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
+
+HF_TOKEN_ENV_VARS = ("HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGING_FACE_HUB_TOKEN")
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -31,6 +35,44 @@ def _ensure_jsonl(path: str) -> Path:
         p = p.with_suffix(".jsonl")
         print(f"Note: appended .jsonl → {p}", file=sys.stderr)
     return p
+
+
+def _get_huggingface_token() -> tuple[str | None, str | None]:
+    for env_var in HF_TOKEN_ENV_VARS:
+        token = os.environ.get(env_var)
+        if token:
+            return env_var, token
+    return None, None
+
+
+def _upload_dataset_to_huggingface(path: Path, repo_id: str) -> bool:
+    token_env_var, token = _get_huggingface_token()
+    if not token:
+        env_vars = ", ".join(HF_TOKEN_ENV_VARS)
+        print(
+            f"Skipping Hugging Face upload for {repo_id}: no token found in {env_vars}.",
+            file=sys.stderr,
+        )
+        return False
+
+    try:
+        hub_module = importlib.import_module("huggingface_hub")
+    except ImportError as exc:
+        raise SystemExit(
+            "Hugging Face upload requires the optional dependency: pip install -e '.[huggingface]'"
+        ) from exc
+
+    api = hub_module.HfApi(token=token)
+    api.create_repo(repo_id=repo_id, repo_type="dataset", exist_ok=True)
+    api.upload_file(
+        path_or_fileobj=str(path),
+        path_in_repo=path.name,
+        repo_id=repo_id,
+        repo_type="dataset",
+        commit_message=f"Upload {path.name} from logminer",
+    )
+    print(f"Uploaded {path.name} to https://huggingface.co/datasets/{repo_id} ({token_env_var})")
+    return True
 
 
 def cmd_parse(args: argparse.Namespace) -> None:
@@ -160,8 +202,11 @@ def cmd_filter(args: argparse.Namespace) -> None:
     records = _load_jsonl(Path(args.input))
     filtered = [r for r in records if r.get("score", 0) >= args.min_score]
     formatted = [_to_arrow_safe(format_for_training(r)) for r in filtered]
-    _write_jsonl(_ensure_jsonl(args.output), formatted)
+    output_path = _ensure_jsonl(args.output)
+    _write_jsonl(output_path, formatted)
     print(f"Filtered {len(records)} → {len(filtered)} records (min-score={args.min_score})")
+    if args.hf_repo:
+        _upload_dataset_to_huggingface(output_path, args.hf_repo)
 
 
 def cmd_validate(args: argparse.Namespace) -> None:
@@ -316,6 +361,7 @@ def cmd_run(args: argparse.Namespace) -> None:
                 str(final_output),
                 "--min-score",
                 str(args.min_score),
+                *(["--hf-repo", args.hf_repo] if args.hf_repo else []),
             ]
         )
     )
@@ -360,6 +406,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_filter.add_argument("--input", required=True)
     p_filter.add_argument("--output", required=True)
     p_filter.add_argument("--min-score", type=float, default=0.5)
+    p_filter.add_argument(
+        "--hf-repo",
+        default=None,
+        help=(
+            "Optional Hugging Face dataset repo (owner/name) to upload the output to "
+            "when HF_TOKEN or HUGGINGFACE_HUB_TOKEN is set"
+        ),
+    )
 
     # validate
     p_val = sub.add_parser("validate", help="Validate parsed data against chat template")
@@ -374,6 +428,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--input", default=None)
     p_run.add_argument("--output", required=True)
     p_run.add_argument("--min-score", type=float, default=0.5)
+    p_run.add_argument(
+        "--hf-repo",
+        default=None,
+        help="Optional Hugging Face dataset repo (owner/name) to upload the final output to",
+    )
 
     return parser
 
