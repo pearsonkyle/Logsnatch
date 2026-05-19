@@ -63,6 +63,10 @@ export HF_TOKEN=hf_xxx
 python -m logminer run --source claude --output training.jsonl --hf-repo your-name/logminer-data
 ```
 
+When upload runs, logminer also writes a dataset-card `README.md` with a
+consistent `logminer` tag and a link back to this GitHub repo so those datasets
+are easier to find on Hugging Face.
+
 If you already ran the earlier stages yourself, `filter` can upload the final
 JSONL too:
 

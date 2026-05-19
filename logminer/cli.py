@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 
 HF_TOKEN_ENV_VARS = ("HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGING_FACE_HUB_TOKEN")
+LOGMINER_DATASET_TAGS = ("logminer", "coding-agent-logs")
+LOGMINER_REPO_URL = "https://github.com/pearsonkyle/LogMiner"
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -45,6 +47,22 @@ def _get_huggingface_token() -> tuple[str | None, str | None]:
     return None, None
 
 
+def _build_huggingface_dataset_card(path: Path, repo_id: str) -> str:
+    tags = "\n".join(f"- {tag}" for tag in LOGMINER_DATASET_TAGS)
+    return (
+        "---\n"
+        "tags:\n"
+        f"{tags}\n"
+        "---\n\n"
+        f"# {repo_id}\n\n"
+        f"This dataset was uploaded with [LogMiner]({LOGMINER_REPO_URL}).\n\n"
+        "## Provenance\n\n"
+        f"- Source repository: [{LOGMINER_REPO_URL}]({LOGMINER_REPO_URL})\n"
+        f"- Uploaded file: `{path.name}`\n"
+        "- Upload tool: `logminer --hf-repo`\n"
+    )
+
+
 def _upload_dataset_to_huggingface(path: Path, repo_id: str) -> bool:
     token_env_var, token = _get_huggingface_token()
     if not token:
@@ -64,6 +82,13 @@ def _upload_dataset_to_huggingface(path: Path, repo_id: str) -> bool:
 
     api = hub_module.HfApi(token=token)
     api.create_repo(repo_id=repo_id, repo_type="dataset", exist_ok=True)
+    api.upload_file(
+        path_or_fileobj=_build_huggingface_dataset_card(path, repo_id).encode(),
+        path_in_repo="README.md",
+        repo_id=repo_id,
+        repo_type="dataset",
+        commit_message="Add dataset card metadata from logminer",
+    )
     api.upload_file(
         path_or_fileobj=str(path),
         path_in_repo=path.name,

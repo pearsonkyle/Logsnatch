@@ -64,6 +64,16 @@ def test_upload_dataset_uses_huggingface_hub(tmp_path, monkeypatch):
         (
             "upload_file",
             {
+                "path_or_fileobj": cli._build_huggingface_dataset_card(path, "me/data").encode(),
+                "path_in_repo": "README.md",
+                "repo_id": "me/data",
+                "repo_type": "dataset",
+                "commit_message": "Add dataset card metadata from logminer",
+            },
+        ),
+        (
+            "upload_file",
+            {
                 "path_or_fileobj": str(path),
                 "path_in_repo": "training.jsonl",
                 "repo_id": "me/data",
@@ -72,6 +82,16 @@ def test_upload_dataset_uses_huggingface_hub(tmp_path, monkeypatch):
             },
         ),
     ]
+
+
+def test_build_huggingface_dataset_card_includes_search_tag_and_repo_link(tmp_path):
+    card = cli._build_huggingface_dataset_card(tmp_path / "training.jsonl", "me/data")
+
+    assert "tags:" in card
+    assert "- logminer" in card
+    assert "- coding-agent-logs" in card
+    assert cli.LOGMINER_REPO_URL in card
+    assert "# me/data" in card
 
 
 def test_cmd_filter_uploads_when_hf_repo_is_set(tmp_path, monkeypatch):
